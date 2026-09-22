@@ -141,6 +141,10 @@
       <button id="logToggle" class="secondary" style="flex:0; padding:4px 10px; font-size:0.75rem;">vis/skjul</button>
       <button id="logCopy" class="secondary" style="flex:0; padding:4px 10px; font-size:0.75rem;">kopier logg</button>
     </h2>
+    <p class="hint">Siste beskjæring som ble sendt til OCR (før rotasjon/kontrast):</p>
+    <div id="debugCropWrap" style="background:#0d1117; border-radius:8px; padding:6px; margin-bottom:8px; display:none;">
+      <img id="debugCrop" style="max-width:100%; display:block; image-rendering:pixelated;">
+    </div>
     <div id="log"></div>
   </div>
 
@@ -159,6 +163,14 @@
   const confirmCard = $('confirmCard'), confirmInput = $('confirmInput'), confirmUse = $('confirmUse'), confirmRetry = $('confirmRetry');
   const manualInput = $('manualInput'), manualUse = $('manualUse');
   const logEl = $('log'), logToggle = $('logToggle'), logCopy = $('logCopy');
+  const debugCropWrap = $('debugCropWrap'), debugCrop = $('debugCrop');
+
+  function showCropPreview(canvas) {
+    try {
+      debugCrop.src = canvas.toDataURL('image/png');
+      debugCropWrap.style.display = 'block';
+    } catch (e) { log('kunne ikke vise beskjæring: ' + describeErr(e)); }
+  }
 
   let worker = null;
   let workerReady = false;
@@ -259,9 +271,22 @@
       });
       video.srcObject = stream;
       await video.play();
-      video.addEventListener('loadedmetadata', () => {
-        videoWrap.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
-      }, { once: true });
+      // By the time play() resolves, metadata (videoWidth/videoHeight) is normally
+      // already available -- a 'loadedmetadata' listener attached only now would in
+      // most cases never fire (the event already happened), leaving videoWrap on its
+      // CSS default aspect-ratio while the real stream has a different one. That
+      // mismatch makes object-fit:cover crop the picture, which silently throws off
+      // every guide-box-to-pixel calculation in captureBtn's handler below. Set it
+      // immediately if we already have the dimensions, and only fall back to the
+      // event for the rare case where we don't yet.
+      const applyAspect = () => {
+        if (video.videoWidth && video.videoHeight) {
+          videoWrap.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+          log('video intrinsic size: ' + video.videoWidth + 'x' + video.videoHeight);
+        }
+      };
+      if (video.videoWidth) applyAspect();
+      else video.addEventListener('loadedmetadata', applyAspect, { once: true });
       camMsg.classList.add('hidden');
       camBtn.textContent = 'Stopp kamera';
       captureBtn.disabled = false;
@@ -303,6 +328,8 @@
     const cropY = Math.max(0, by - bh * padY);
     const cropW = Math.min(vw - cropX, bw * (1 + 2 * padX));
     const cropH = Math.min(vh - cropY, bh * (1 + 2 * padY));
+    log(`video ${vw}x${vh}, wrap ${Math.round(wrapRect.width)}x${Math.round(wrapRect.height)}, `
+      + `crop [${Math.round(cropX)},${Math.round(cropY)} ${Math.round(cropW)}x${Math.round(cropH)}]`);
 
     const full = document.createElement('canvas');
     full.width = vw; full.height = vh;
@@ -442,6 +469,7 @@
     resultCard.classList.remove('show');
     confirmCard.classList.remove('show');
     setStatus('Analyserer...', '');
+    if (sources[0]) showCropPreview(sources[0].canvas);
     let bestRaw = '', bestRawLen = 0;
     let attempts = 0;
     const t0 = performance.now();
