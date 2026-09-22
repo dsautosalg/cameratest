@@ -71,7 +71,7 @@
 
   #log {
     font-family: "Courier New", monospace; font-size: 0.72rem; color: #6b7686;
-    white-space: pre-wrap; max-height: 160px; overflow-y: auto; margin-top: 8px;
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; margin-top: 8px;
     background: #0d1117; border-radius: 8px; padding: 8px; display: none;
   }
   #log.show { display: block; }
@@ -137,7 +137,10 @@
   </div>
 
   <div class="card">
-    <h2>Debug-logg <button id="logToggle" class="secondary" style="flex:0; padding:4px 10px; font-size:0.75rem;">vis/skjul</button></h2>
+    <h2>Debug-logg
+      <button id="logToggle" class="secondary" style="flex:0; padding:4px 10px; font-size:0.75rem;">vis/skjul</button>
+      <button id="logCopy" class="secondary" style="flex:0; padding:4px 10px; font-size:0.75rem;">kopier logg</button>
+    </h2>
     <div id="log"></div>
   </div>
 
@@ -155,7 +158,7 @@
   const resultCard = $('resultCard'), resultPlate = $('resultPlate'), resultUse = $('resultUse'), resultRetry = $('resultRetry');
   const confirmCard = $('confirmCard'), confirmInput = $('confirmInput'), confirmUse = $('confirmUse'), confirmRetry = $('confirmRetry');
   const manualInput = $('manualInput'), manualUse = $('manualUse');
-  const logEl = $('log'), logToggle = $('logToggle');
+  const logEl = $('log'), logToggle = $('logToggle'), logCopy = $('logCopy');
 
   let worker = null;
   let workerReady = false;
@@ -168,6 +171,23 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
   logToggle.addEventListener('click', () => logEl.classList.toggle('show'));
+  logCopy.addEventListener('click', async () => {
+    const text = logEl.textContent || '(tom logg)';
+    const flash = (msg) => { const old = logCopy.textContent; logCopy.textContent = msg; setTimeout(() => { logCopy.textContent = old; }, 1500); };
+    try {
+      await navigator.clipboard.writeText(text);
+      flash('kopiert!');
+    } catch (e) {
+      // Clipboard API blocked (older iOS / non-https) -- select the text so it can be copied manually.
+      logEl.classList.add('show');
+      const range = document.createRange();
+      range.selectNodeContents(logEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      flash('marker teksten - kopier manuelt');
+    }
+  });
 
   // Tesseract.js can reject with things that aren't plain Error objects
   // (strings, DOMExceptions, plain {message} blobs from the worker) -- this
@@ -480,6 +500,7 @@
     const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
     confirmInput.value = clean;
     confirmCard.classList.add('show');
+    logEl.classList.add('show'); // no clean match -- surface the debug log automatically
     confirmCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
   confirmUse.addEventListener('click', () => {
