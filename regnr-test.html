@@ -169,6 +169,18 @@
   }
   logToggle.addEventListener('click', () => logEl.classList.toggle('show'));
 
+  // Tesseract.js can reject with things that aren't plain Error objects
+  // (strings, DOMExceptions, plain {message} blobs from the worker) -- this
+  // pulls out whatever text is actually there instead of printing "undefined".
+  function describeErr(e) {
+    if (!e) return String(e);
+    if (typeof e === 'string') return e;
+    if (e.message) return e.message + (e.name ? ' (' + e.name + ')' : '');
+    try { return JSON.stringify(e); } catch (_) { return String(e); }
+  }
+  window.addEventListener('error', (ev) => log('window error: ' + describeErr(ev.error || ev.message)));
+  window.addEventListener('unhandledrejection', (ev) => log('unhandled rejection: ' + describeErr(ev.reason)));
+
   function setStatus(msg, kind) {
     statusEl.textContent = msg || '';
     statusEl.className = kind || '';
@@ -180,17 +192,25 @@
     loadBtn.disabled = true;
     engineStatus.textContent = 'Laster ned og starter OCR-motor...';
     try {
+      // Absolute URLs, resolved against THIS page -- important because worker.min.js
+      // runs inside a dedicated Web Worker, which resolves relative paths against its
+      // OWN script URL (i.e. .../tesseract/worker.min.js), not the page's. A relative
+      // 'tesseract/...' path there would double up into '.../tesseract/tesseract/...'.
+      const abs = (p) => new URL(p, document.baseURI).href;
+      log('baseURI=' + document.baseURI);
       worker = await Tesseract.createWorker('eng', 1, {
-        workerPath: 'tesseract/worker.min.js',
-        corePath: 'tesseract/tesseract-core-lstm.wasm.js',
-        langPath: 'tesseract',
+        workerPath: abs('tesseract/worker.min.js'),
+        corePath: abs('tesseract/tesseract-core-lstm.wasm.js'),
+        langPath: abs('tesseract'),
         gzip: true,
         logger: (m) => {
           if (m.status && typeof m.progress === 'number') {
             loadBarFill.style.width = Math.round(m.progress * 100) + '%';
             engineStatus.textContent = m.status + ' (' + Math.round(m.progress * 100) + '%)';
           }
+          log('progress: ' + JSON.stringify(m));
         },
+        errorHandler: (e) => log('worker errorHandler: ' + describeErr(e)),
       });
       await worker.setParameters({
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
@@ -200,9 +220,11 @@
       loadBarFill.style.width = '100%';
       log('Tesseract-worker klar.');
     } catch (e) {
-      engineStatus.textContent = 'Feil ved lasting: ' + e.message;
+      const desc = describeErr(e);
+      engineStatus.textContent = 'Feil ved lasting: ' + desc;
       loadBtn.disabled = false;
-      log('FEIL ved lasting av worker: ' + e.message);
+      log('FEIL ved lasting av worker: ' + desc);
+      logEl.classList.add('show');
     }
   });
 
