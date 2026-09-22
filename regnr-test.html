@@ -476,6 +476,13 @@
     let bestRaw = '', bestRawLen = 0;
     let attempts = 0;
     const t0 = performance.now();
+    // A single regex-shaped match (2 letters + 5 digits) can still be a coincidence --
+    // background text or a misread can happen to land on a valid-looking shape. Require
+    // the SAME candidate to come up independently from at least 2 of the different
+    // rotation/psm attempts before it's auto-accepted; a one-off match still gets
+    // offered, but through the confirmation card, never auto-accepted.
+    const CONSENSUS_NEEDED = 2;
+    const counts = new Map(); // candidate plate -> how many attempts produced it
     try {
       outer:
       for (const src of sources) {
@@ -490,18 +497,31 @@
             if (cleanLen > bestRawLen) { bestRaw = raw; bestRawLen = cleanLen; }
             const match = tryMatch(raw);
             if (match) {
-              const ms = Math.round(performance.now() - t0);
-              log(`TREFF: ${match} (${attempts} forsøk, ${ms} ms)`);
-              showResult(match);
-              break outer;
+              const n = (counts.get(match) || 0) + 1;
+              counts.set(match, n);
+              log(`  -> mulig treff "${match}" (sett ${n}x)`);
+              if (n >= CONSENSUS_NEEDED) {
+                const ms = Math.round(performance.now() - t0);
+                log(`TREFF (bekreftet ${n}x): ${match} (${attempts} forsøk, ${ms} ms)`);
+                showResult(match);
+                break outer;
+              }
             }
           }
         }
       }
       if (!resultCard.classList.contains('show')) {
         const ms = Math.round(performance.now() - t0);
-        log(`Ingen sikker treff etter ${attempts} forsøk (${ms} ms). Beste rålesing: "${bestRaw}"`);
-        showConfirm(bestRaw);
+        // No candidate got independent confirmation -- if exactly one shape-valid
+        // candidate showed up even once, offer THAT for confirmation (much more likely
+        // to be right than the noisiest raw text); otherwise fall back to the longest
+        // raw read so there's still something to correct from.
+        let bestCandidate = null, bestCandidateCount = 0;
+        for (const [cand, n] of counts) { if (n > bestCandidateCount) { bestCandidate = cand; bestCandidateCount = n; } }
+        const toConfirm = bestCandidate || bestRaw;
+        log(`Ingen bekreftet treff etter ${attempts} forsøk (${ms} ms). `
+          + (bestCandidate ? `Beste kandidat (kun 1x): "${bestCandidate}".` : `Beste rålesing: "${bestRaw}"`));
+        showConfirm(toConfirm);
       }
     } catch (e) {
       setStatus('Feil under analyse: ' + e.message, 'err');
