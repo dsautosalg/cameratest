@@ -320,7 +320,10 @@
     const wrapRect = videoWrap.getBoundingClientRect();
     const boxRect = guideBox.getBoundingClientRect();
     const scaleX = vw / wrapRect.width, scaleY = vh / wrapRect.height;
-    const padX = 0.06, padY = 0.35; // extra margin around the guide box, as a fraction of box size
+    // Real-world crops came back with too much bumper/frame text inside the box confusing
+    // OCR's line segmentation -- now that the guide box itself is what the user aligns to
+    // the plate, trust that alignment and keep the extra margin small.
+    const padX = 0.04, padY = 0.12; // extra margin around the guide box, as a fraction of box size
     const bx = (boxRect.left - wrapRect.left) * scaleX;
     const by = (boxRect.top - wrapRect.top) * scaleY;
     const bw = boxRect.width * scaleX, bh = boxRect.height * scaleY;
@@ -455,7 +458,7 @@
 
   // ---------- Core pipeline ----------
   const ROTATIONS = [0, -5, 5, -10, 10];
-  const PSMS = ['7', '8'];
+  const PSMS = ['7', '8', '6'];
 
   async function ocrAttempt(canvas, psm) {
     await worker.setParameters({ tessedit_pageseg_mode: psm });
