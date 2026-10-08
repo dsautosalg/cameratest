@@ -208,6 +208,23 @@ function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 sheetUrl.value = lsGet(LS_URL);
 sheetToken.value = lsGet(LS_TOKEN);
 
+// Engangs-oppsettlenke: ...regnr-sheet-test.html#u=<nettapp-url>&t=<token>
+// Verdiene i #-delen sendes aldri til serveren (GitHub ser dem ikke), lagres her i telefonen,
+// og fjernes fra adresselinjen med en gang. Slik slipper man å skrive dem inn -- uten at
+// token og URL må ligge i den offentlige koden på GitHub.
+(function applySetupHash() {
+  try {
+    if (!location.hash || location.hash.length < 3) return;
+    const h = new URLSearchParams(location.hash.slice(1));
+    const u = h.get('u'), t = h.get('t');
+    if (!u || !t) return;
+    lsSet(LS_URL, u.trim()); lsSet(LS_TOKEN, t.trim());
+    sheetUrl.value = u.trim(); sheetToken.value = t.trim();
+    history.replaceState(null, '', location.pathname + location.search);
+    setTimeout(() => sheetMsg('Koblet automatisk via oppsettlenke og lagret på denne telefonen.', true), 0);
+  } catch (_) {}
+})();
+
 function sheetMsg(msg, ok) { sheetStatus.textContent = msg; sheetStatus.style.color = ok === true ? '#4ade80' : ok === false ? '#f87171' : ''; }
 function updateRetryBtn() {
   sheetRetry.textContent = 'Send ventende (' + pendingQueue.length + ')';
